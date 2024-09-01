@@ -8,8 +8,9 @@ find_package(OpenSSL REQUIRED)
 find_package(Boost REQUIRED )
 set(SOURCES
     main.cpp
-    client_class.cpp 
-    
+    client_class.cpp
+    crypt.cpp 
+  	  
 )
 add_executable(my_program ${SOURCES})
 
