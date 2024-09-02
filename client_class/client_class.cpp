@@ -12,15 +12,13 @@
 #include <filesystem>
 #include <fstream>
 #include <sys/ioctl.h>
+#include "crypt.hpp"
 #define FILE_PATH "/etc/server_config.conf"
 #define DOW_FILE_PATH "~/Download"
-Client:: Client(boost:: asio:: io_context& io_context , std:: string user_name , std:: string ip_address):_client_socket(io_context), _server_socket(io_context), _socket_for_connection(io_context) {
-    this->user_name = std:: move(user_name) ;
-    this->ip_address = std:: move(ip_address) ;
-    this->is_waiting = true;
-    this->is_connected = true;
-    this->is_user_not_accepted = false;
-    this->want_to_connect = false;
+Client:: Client(boost:: asio:: io_context& io_context , std:: string user_name , std:: string ip_address):_client_socket(io_context), _server_socket(io_context) {
+    this->user_name = std:: move(user_name);
+    this->ip_address = std:: move(ip_address);
+    is_accepted = true;
     emoji_list = {
         {"/laughingFace", "😂"},
         {"/thumbsUp", "👍"},
@@ -52,22 +50,16 @@ bool Client:: set_ip_address(std:: string ipaddress ){
     this->ip_address = ipaddress;
     return 0;
 }
-std:: string Client:: get_ip_address(){
+std::string Client::get_ip_address(){
     return this->ip_address;
 }
-bool Client ::  set_client_status(bool client_status){
-     this-> client_status = client_status;
-     return this->client_status;
-}
- bool Client:: get_client_status(){
-    return client_status;
- }
- boost::asio:: ip :: tcp :: socket& Client::  get_client_socket(){
+
+boost::asio:: ip :: tcp :: socket& Client::  get_client_socket(){
     return this->_client_socket;
- }
- boost:: asio :: ip :: tcp:: socket& Client:: get_server_socket(){
+}
+boost:: asio :: ip :: tcp:: socket& Client:: get_server_socket(){
     return this->_server_socket;
- }
+}
 
 bool Client::check_user_name(std::string &username) {
 	return username.find('>') == std::string::npos;
@@ -118,16 +110,6 @@ void Client::write_to_file(std::string &text) {
 	std::ofstream out(FILE_PATH, std::ios::app);
 	out << text << std::endl;	
 	out.close();
-}
-
-std::string Client::xorEncryptDecrypt(const std::string& text, char key) {
-    std::string result = text;
-
-    for (int i = 0; i < text.size(); ++i) {
-        result[i] = text[i] ^ key; 
-    }
-
-    return result;
 }
 
 void Client::start_input_thread(Client &another_client) {
@@ -208,7 +190,7 @@ void Client::send_message(const std::string& message) {
                     buffer.push_back('\t');
                     boost::asio::write(_client_socket, boost::asio::buffer(buffer.data(), buffer.size()));
                 } 
-                std:: cout << "your file succefully transfered " << std:: endl;
+                std::cout << "Your file has been transferred successfully" << std::endl;
                 return;
             }
         }
@@ -216,7 +198,7 @@ void Client::send_message(const std::string& message) {
         boost::system::error_code err;
         write(_client_socket, boost::asio::buffer(message_to_send), err);
         if(err) {
-            //std::cout << "Error: " << err.message() << std::endl;
+            std::cout << "Error: " << err.message() << std::endl;
             return;
         }
         std::cout << user_name + " " + time_only + "> " << message << std::endl;
@@ -269,7 +251,6 @@ void Client::get_another_client_username(boost::asio::io_context &ioContext, Cli
         std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); 
     }
     if(client_to_connect.empty()) {
-        std::cout << "Empty input received." << std::endl;
         return;
     }
 
@@ -279,7 +260,6 @@ void Client::get_another_client_username(boost::asio::io_context &ioContext, Cli
         if (err) {
             std::cout << "Error: " << err.message() << std::endl;
         }
-        //ioContext.stop();
         return;
     }
 
@@ -367,16 +347,9 @@ void Client::server_receive_handler(const boost::system::error_code &err, boost:
             std::string server_passwd;
             std::cout << "Server password: ";
             std::getline(std::cin, server_passwd);
-            std::string encrypted_server_password = xorEncryptDecrypt(server_passwd, 'K');
+            std::string encrypted_server_password = hmac_md5(server_passwd);
             set_server_passwd(encrypted_server_password);
             connect_to_server();
-            //std::string message = "PASWD" + encrypted_server_passwd + '\n';
-            //boost::system::error_code err;
-            //write(_server_socket, boost::asio::buffer(message), err);
-            //if(err) {
-            //    std::cout << "Error: " << err.message() << std::endl;
-           // }
-            //ioContext.stop();
         }
         if(resp_code == "UNERR") {
             std::cout << message.substr(5, message.size()) << std::endl;
@@ -387,12 +360,6 @@ void Client::server_receive_handler(const boost::system::error_code &err, boost:
             request_to_server = "LOGIN" + this->user_name + ">" + this->ip_address + '\n';
             boost::asio::write(_server_socket, boost::asio::buffer(request_to_server));
         }
-        //else if(resp_code == "DCNTD") {
-         //   std::cout << message.substr(5, message.size()) << std::endl;
-            //is_connected = false;
-            //_client_socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both);
-            //_client_socket.close();
-        //}
         if(resp_code == "_UPDT") {
             system("clear");
             message.erase(0, 5);
@@ -466,8 +433,10 @@ void Client::get_client_response(Client &another_client, boost::asio::io_context
     }
     else if (response == "n" || response == "no") {
         std::cout << "Connection denied" << std::endl;
-        input_thread.join();
+        //input_thread.join();
+        _client_socket.cancel();
         _client_socket.close();
+        is_accepted = false;
     }
     else {
         std::cout << "Please input y/yes or n/no" << std::endl;
@@ -475,10 +444,6 @@ void Client::get_client_response(Client &another_client, boost::asio::io_context
     }
 }
 
-void Client::wait_for_enter() {
-    std::cout << "Please press Enter to continue" << std::endl;
-    std::cin.get(); 
-}
 void Client::client_receive_handler(const boost::system::error_code &err, std::shared_ptr<boost::asio::streambuf> buf, Client &another_client, boost::asio::io_context &ioContext, boost::asio::ip::tcp::acceptor &tcp_acceptor) {
     if(!err) {
         boost::system::error_code error;
@@ -492,12 +457,13 @@ void Client::client_receive_handler(const boost::system::error_code &err, std::s
             std::cout << std::endl;
             std::cout << username << " want to connect to you.Do you agree? y/yes or n/no" << std::endl;
             std::cout << "Please press Enter to continue" << std::endl;
-            //input_thread.join();
+            input_thread.join();
             get_client_response(another_client, ioContext, buf);
-            usleep(2000000);
-            //if(!is_connected) {
-            //    return;
-            //}
+            if(!is_accepted) {
+                //_client_socket = boost::asio::ip::tcp::socket(ioContext);
+                accept_client_connections(tcp_acceptor, another_client, ioContext);
+                return;
+            }
         }
         if(message.substr(0, 5) == "_ACPT") {
             struct winsize w;
@@ -574,13 +540,13 @@ void Client::client_receive_handler(const boost::system::error_code &err, std::s
     } else {
         if(_client_socket.is_open()) {
             input_thread.join();
+            _client_socket.cancel();
             _client_socket.close();
             std::cout << "Connection denied" << std::endl;
             std::string request = "_UPDT\n";
             write(_server_socket, boost::asio::buffer(request));
-            tcp_acceptor.async_accept(_client_socket, [this, &another_client, &ioContext, &tcp_acceptor](const boost::system::error_code &err) {
-                accept_handler(err, another_client, ioContext, tcp_acceptor);
-            });
+            //_client_socket = boost::asio::ip::tcp::socket(ioContext);
+            accept_client_connections(tcp_acceptor, another_client, ioContext);
         }
     }
 }
@@ -593,15 +559,8 @@ void Client :: receive_data_from_another_client(std::shared_ptr<boost::asio::str
 
 void Client :: accept_handler(const boost::system::error_code &err, Client &another_client, boost::asio::io_context &ioContext, boost::asio::ip::tcp::acceptor &tcp_acceptor) {
     if(!err) {
-        //std::cout << "Connection accepted" << std::endl;
         std::shared_ptr<boost::asio::streambuf> buffer_client = std::make_shared<boost::asio::streambuf>();
 	    receive_data_from_another_client(buffer_client, another_client, ioContext, tcp_acceptor);
-        //struct winsize w;
-        //ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-        //terminal_width = w.ws_col;
-        //system("clear");
-        //input_thread2 = std::thread(&Client::start_input_thread, this);
-        //input_thread2.detach();
     } else {
         std::cout << "Error code: " << err.value() << " - " << err.message() << std::endl;
     }

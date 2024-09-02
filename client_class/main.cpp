@@ -6,6 +6,7 @@
 #include <fstream>
 #include <cstring>
 #include <thread>
+#include "crypt.hpp"
 #define FILE_PATH "/etc/server_config.conf"
 
 bool check_file() {
@@ -45,7 +46,6 @@ std::string get_local_ip_address() {
     return "Unable to get local IP address";
 }
 int main (int argc, char* argv[]) {
-	std::cout << "\033[93m";
 	std::string server_ip;
 	std::string server_passwd;
 	if (check_file()) {
@@ -62,13 +62,13 @@ int main (int argc, char* argv[]) {
 			if (std::strcmp(argv[1], "--config") == 0) {
 				server_ip = std::string(argv[2]);
 				std::cout << server_ip << std::endl;
-				server_passwd = std::string(argv[3]);
+				std::string server_passwd1 = std::string(argv[3]);
 				if(!Client::is_valid_ip(server_ip)) {
 					Client::get_server_ip(server_ip);
 				} else {
 					Client::check_server_ip(server_ip);
 				}
-				server_passwd = Client::xorEncryptDecrypt(server_passwd, 'K');
+				server_passwd = hmac_md5(server_passwd1);
 				Client::write_to_file(server_ip);
 			} else {
 				std::cout << "Please configure server config file with option --config <IP> <Password>" << std::endl;
@@ -76,6 +76,7 @@ int main (int argc, char* argv[]) {
 			}
 		}
 	}
+	std::cout << "\033[93m";
 	boost::asio::io_context ioContext;
 	std::string ip;
 	std::cout << "IP address: ";

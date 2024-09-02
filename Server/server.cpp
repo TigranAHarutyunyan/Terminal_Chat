@@ -5,6 +5,7 @@
 #include <thread>
 #include <filesystem>
 #include <fstream>
+#include "crypt.hpp"
 #define FILE_PATH "/etc/server_passwd.conf"
 
 bool check_args(int &argc) {
@@ -26,8 +27,6 @@ void read_from_file(std::string &server_passwd) {
 }
 
 int main (int argc, char* argv[]) {
-    system("bash -c 'echo -e \"\\033]11;#000000\\007\"'");
-    std::cout << "\033[1;32m";
     std::string server_passwd;
     std::string file_path = "/etc/server_passwd.conf";
     if(Server::check_file(file_path)) {
@@ -42,7 +41,7 @@ int main (int argc, char* argv[]) {
             return 1;
         } else {
             if(std::strcmp(argv[1], "--passwd") == 0) {
-                std::string encrypted_passwd = Server::xorEncryptDecrypt(argv[2], 'K');
+                std::string encrypted_passwd = hmac_md5(std::string(argv[2]));
                 write_to_file(encrypted_passwd);
                 read_from_file(server_passwd);
             } else {
@@ -51,6 +50,8 @@ int main (int argc, char* argv[]) {
             }
         }
     }
+    system("bash -c 'echo -e \"\\033]11;#000000\\007\"'");
+    std::cout << "\033[1;32m";
     try {
         boost::asio::io_context ioContext;
         std::shared_ptr<boost::asio::ip::tcp::socket> tcp_socket = std::make_shared<boost::asio::ip::tcp::socket>(ioContext);

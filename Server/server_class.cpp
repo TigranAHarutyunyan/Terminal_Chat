@@ -109,34 +109,20 @@ void Server::add_user(const std::string &username, const std::string &IP, std::s
     }
 }
 
-std::string Server::xorEncryptDecrypt(const std::string& text, char key) {
-    std::string result = text;
-
-    for (size_t i = 0; i < text.size(); ++i) {
-        result[i] = text[i] ^ key; 
-    }
-
-    return result;
-}
-
-void Server::read_handler(const boost::system::error_code &err, std::shared_ptr<boost::asio::ip::tcp::socket> socket, std::shared_ptr<boost::asio::streambuf> buf, size_t bytes_transferred) {
+void Server::read_handler(const boost::system::error_code &err, std::shared_ptr<boost::asio::ip::tcp::socket> socket, std::shared_ptr<boost::asio::streambuf> buf, size_t bytes_transferred, std::string &passwd) {
     if(!err) {
         std::istream in(buf.get());
         std::string data;
         std::getline(in, data);
         buf->consume(bytes_transferred);
         data.erase(data.find_last_not_of(" \n\r\t") + 1);
-        int index_of_symb = data.find('>');
-        std::string username = data.substr(5, index_of_symb - 5);
         std::string user_to_connect;
         if(data.substr(0, 5) == "_UPDT") {
             send_updates(data.substr(0, 5));
         }
         if(data.substr(0, 5) == "PASWD") {
-            std::string password = data.substr(5, data.size());
-            std::string decrypted_passwd = xorEncryptDecrypt(password, 'K');
-            std::string decrypted_server_passwd = xorEncryptDecrypt(this->passwd, 'K');
-            if(decrypted_passwd == decrypted_server_passwd) {
+            std::string password = data.substr(5, password.size());
+            if(password == passwd) {
                 std::cout << "Connection accepted" << std::endl;
                 std::string message = "PASACPassword is correct.Connection accepted\n";
                 write_to_socket(socket, message);
@@ -147,10 +133,14 @@ void Server::read_handler(const boost::system::error_code &err, std::shared_ptr<
             }
         }
         if(data.substr(0, 5) == "LOGIN") {
+            int index_of_symb = data.find('>');
+            std::string username = data.substr(5, index_of_symb - 5);
             std::string IP = data.substr(index_of_symb + 1, data.size());
             add_user(username, IP, socket);
         }
         if(data.substr(0, 5) == "EXITT") {
+            int index_of_symb = data.find('>');
+            std::string username = data.substr(5, index_of_symb - 5);
             boost::system::error_code error;
             active_users_list[username] = "Inactive";
             user_socket_list.erase(username);
@@ -166,10 +156,13 @@ void Server::read_handler(const boost::system::error_code &err, std::shared_ptr<
             return;
         }
         if(data.substr(0, 5) == "DISCN") {
+            int index_of_symb = data.find('>');
+            std::string username = data.substr(5, index_of_symb - 5);
             std::string user_to_disconnect = data.substr(index_of_symb + 1, data.size());
             disconnect_from_user(username, user_to_disconnect);
         }
         if(data.substr(0, 5) == "_ACPT") {
+            int index_of_symb = data.find('>');
             std::string current_user = data.substr(5, index_of_symb - 5);
             std::string user_to_connect = data.substr(index_of_symb + 1, data.size());
             std::cout << user_to_connect << std::endl << current_user << std::endl;
@@ -178,36 +171,36 @@ void Server::read_handler(const boost::system::error_code &err, std::shared_ptr<
             std::string resp_code = "_UPDT";
             send_updates(resp_code);
         }
-        async_read_until(*socket, *buf, '\n', [socket, buf, this](const boost::system::error_code &err, size_t bytes_transferred) {
-            read_handler(err, socket, buf, bytes_transferred);
+        async_read_until(*socket, *buf, '\n', [socket, buf, this, &passwd](const boost::system::error_code &err, size_t bytes_transferred) {
+            read_handler(err, socket, buf, bytes_transferred, passwd);
         });
     } else {
         std::cout << "Error: " << err.message() << std::endl;
     }
 }
 
-void Server::read_from_socket(std::shared_ptr<boost::asio::ip::tcp::socket> socket, std::shared_ptr<boost::asio::streambuf> buf) {
-    async_read_until(*socket, *buf, '\n', [socket, buf, this](const boost::system::error_code &err, size_t bytes_transferred) {
-        read_handler(err, socket, buf, bytes_transferred);
+void Server::read_from_socket(std::shared_ptr<boost::asio::ip::tcp::socket> socket, std::shared_ptr<boost::asio::streambuf> buf, std::string &passwd) {
+    async_read_until(*socket, *buf, '\n', [socket, buf, this, &passwd](const boost::system::error_code &err, size_t bytes_transferred) {
+        read_handler(err, socket, buf, bytes_transferred, passwd);
     });
 }
 
-void Server::accept_handler(const boost::system::error_code &err, std::shared_ptr<boost::asio::ip::tcp::socket> socket, boost::asio::ip::tcp::acceptor &acceptor, boost::asio::io_context &ioContext) {
+void Server::accept_handler(const boost::system::error_code &err, std::shared_ptr<boost::asio::ip::tcp::socket> socket, boost::asio::ip::tcp::acceptor &acceptor, boost::asio::io_context &ioContext, std::string &passwd) {
     if(!err) {
         std::shared_ptr<boost::asio::streambuf> buf = std::make_shared<boost::asio::streambuf>();
-        read_from_socket(socket, buf);
+        read_from_socket(socket, buf, passwd);
     } else {
         std::cout << "Error: " << err.message() << std::endl;
     }
     std::shared_ptr<boost::asio::ip::tcp::socket> tcp_socket = std::make_shared<boost::asio::ip::tcp::socket>(ioContext);
-    acceptor.async_accept(*tcp_socket, [tcp_socket, &acceptor, &ioContext, this](const boost::system::error_code &err) {
-        accept_handler(err, tcp_socket, acceptor, ioContext);
+    acceptor.async_accept(*tcp_socket, [tcp_socket, &acceptor, &ioContext, this, &passwd](const boost::system::error_code &err) {
+        accept_handler(err, tcp_socket, acceptor, ioContext, passwd);
     });
 }
 
-void Server::do_accept(std::shared_ptr<boost::asio::ip::tcp::socket> socket, boost::asio::ip::tcp::acceptor &acceptor, boost::asio::io_context &ioContext) {
-    acceptor.async_accept(*socket, [socket, &acceptor, &ioContext, this](const boost::system::error_code &err) {
-        accept_handler(err, socket, acceptor, ioContext);
+void Server::do_accept(std::shared_ptr<boost::asio::ip::tcp::socket> socket, boost::asio::ip::tcp::acceptor &acceptor, boost::asio::io_context &ioContext, std::string &passwd) {
+    acceptor.async_accept(*socket, [socket, &acceptor, &ioContext, this, &passwd](const boost::system::error_code &err) {
+        accept_handler(err, socket, acceptor, ioContext, passwd);
     });
 }
 
@@ -216,7 +209,6 @@ Server::Server(std::shared_ptr<boost::asio::ip::tcp::socket> socket, boost::asio
     if(!check_file(file_path)) {
         create_user_list_file(file_path);
     }
-    do_accept(socket, acceptor, ioContext);
-    this->passwd = passwd;
+    do_accept(socket, acceptor, ioContext, passwd);
     std::cout << "Server is listening on port 5001" << std::endl;
 }
