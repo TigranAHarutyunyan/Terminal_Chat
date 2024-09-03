@@ -41,7 +41,6 @@ void Server::send_updates(const std::string &resp_code) {
         message_for_current_socket.erase(pos, resp_code.length());
     }
     message_for_current_socket = resp_code + message_for_current_socket;
-    //write(*user_socket_list[username], boost::asio::buffer(message_for_current_socket));
     for (auto &user_socket : user_socket_list) {
         if(busy_users_list[user_socket.first] != "Busy") {
             write(*user_socket.second, boost::asio::buffer(message_for_current_socket + '\n'));
@@ -50,17 +49,10 @@ void Server::send_updates(const std::string &resp_code) {
 }
 
 void Server::disconnect_from_user(const std::string &current_user, const std::string &user_to_disconnect) {
-    std::cout << current_user << std::endl;
-    std::cout << user_to_disconnect << std::endl;
     busy_users_list[current_user] = "NotBusy";
     busy_users_list[user_to_disconnect] = "NotBusy";
-    //std::string message = "DCNTDSuccessfully disconnected from " + user_to_disconnect + '\n';
-    //write_to_socket(socket, message);
-    //message = "DCNTDSuccessfully disconnected from " + current_user + '\n';
-    //write_to_socket(user_socket_list[user_to_disconnect], message);
-    std::string resp_code = "_UPDT";
-    send_updates(resp_code);
-    //send_updates(resp_code, user_to_disconnect);
+    std::cout << current_user << " " << busy_users_list[current_user] << std::endl;
+    std::cout << user_to_disconnect << " " << busy_users_list[user_to_disconnect] << std::endl;
 }
 
 void Server::update_user_list(const std::string &user_name, const std::string &user_ip) {
@@ -135,7 +127,8 @@ void Server::read_handler(const boost::system::error_code &err, std::shared_ptr<
         if(data.substr(0, 5) == "LOGIN") {
             int index_of_symb = data.find('>');
             std::string username = data.substr(5, index_of_symb - 5);
-            std::string IP = data.substr(index_of_symb + 1, data.size());
+            boost::asio::ip::tcp::endpoint remote_endpoint = socket->remote_endpoint();
+            std::string IP = remote_endpoint.address().to_string();
             add_user(username, IP, socket);
         }
         if(data.substr(0, 5) == "EXITT") {

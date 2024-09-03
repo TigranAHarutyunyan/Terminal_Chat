@@ -15,10 +15,16 @@
 #include "crypt.hpp"
 #define FILE_PATH "/etc/server_config.conf"
 #define DOW_FILE_PATH "~/Download"
-Client:: Client(boost:: asio:: io_context& io_context , std:: string user_name , std:: string ip_address):_client_socket(io_context), _server_socket(io_context) {
+
+Client:: Client(boost:: asio:: io_context& io_context , const std::string &user_name , const std::string &ip_address, const std::string &server_ip, const std::string &server_passwd) {
+    this->_client_socket = std::make_unique<boost::asio::ip::tcp::socket>(io_context);
+    this->_server_socket = std::make_unique<boost::asio::ip::tcp::socket>(io_context);
     this->user_name = std:: move(user_name);
     this->ip_address = std:: move(ip_address);
-    is_accepted = true;
+    this->server_endpoint = boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(server_ip), 5001);
+    this->encrypted_server_passwd = server_passwd;
+    this->terminal_width = 80;
+    this->is_accepted = false;
     emoji_list = {
         {"/laughingFace", "😂"},
         {"/thumbsUp", "👍"},
@@ -28,6 +34,7 @@ Client:: Client(boost:: asio:: io_context& io_context , std:: string user_name ,
         {"/foldedHands", "🙏"},
     };
 }
+
 bool  Client :: set_user_name(std:: string username){
     if(username.empty()){
         std:: cout << "Error: Invalid value " << std:: endl;
@@ -37,7 +44,7 @@ bool  Client :: set_user_name(std:: string username){
         std::cout << "Please input username without '>'" << std::endl;
     }
     this->user_name = username;
-    return 0 ;  
+    return 0;  
 } 
 std:: string  Client:: get_user_name(){
     return this->user_name;
@@ -52,13 +59,6 @@ bool Client:: set_ip_address(std:: string ipaddress ){
 }
 std::string Client::get_ip_address(){
     return this->ip_address;
-}
-
-boost::asio:: ip :: tcp :: socket& Client::  get_client_socket(){
-    return this->_client_socket;
-}
-boost:: asio :: ip :: tcp:: socket& Client:: get_server_socket(){
-    return this->_server_socket;
 }
 
 bool Client::check_user_name(std::string &username) {
@@ -112,30 +112,36 @@ void Client::write_to_file(std::string &text) {
 	out.close();
 }
 
-void Client::start_input_thread(Client &another_client) {
-    std::string message;
-    while (std::getline(std::cin, message)) {
-        if (message == "/disconnect") {
-            std::string message = "DISCN" + user_name + ">" + another_client.get_user_name() + '\n';
-            boost::system::error_code error;
-            write(_server_socket, boost::asio::buffer(message), error);
-            if (error) {
-                std::cout << "Error: " << error.message() << std::endl;
+void Client::start_input_thread(Client &another_client, std::string client_message) {
+    try {
+        while (std::getline(std::cin, client_message)) {
+            if(client_message.empty()) {
+                break;
             }
-            _client_socket.close();  
-            break; 
-        }
-        for (const auto& pair : emoji_list) {
-            const std::string& emoji_code = pair.first;
-            const std::string& emoji = pair.second;
-
-            int pos = 0;
-            while ((pos = message.find(emoji_code, pos)) != std::string::npos) {
-                message.replace(pos, emoji_code.length(), emoji);
-                pos += emoji.length();
+            if (client_message == "/disconnect") {
+                client_message = "DISCN\t";
+                boost::system::error_code error;
+                write(*_client_socket, boost::asio::buffer(client_message), error);
+                if (error) {
+                    std::cout << "Error: " << error.message() << std::endl;
+                }
+                client_message = "DISCN" + user_name + '>' + another_client.get_user_name() + '\n';
+                write(*_server_socket, boost::asio::buffer(client_message));
+                break; 
             }
+            for (const auto& pair : emoji_list) {
+                const std::string& emoji_code = pair.first;
+                const std::string& emoji = pair.second;
+                int pos = 0;
+                while ((pos = client_message.find(emoji_code, pos)) != std::string::npos) {
+                    client_message.replace(pos, emoji_code.length(), emoji);
+                    pos += emoji.length();
+                }
+            }
+            send_message(client_message);
         }
-        send_message(message);
+    } catch(const std::exception& e) {
+        std::cout << "Exception caught: " << e.what() << std::endl;
     }
 }
 
@@ -150,7 +156,7 @@ bool Client :: check_file_path(const std:: string& file_path ){
         std::  cout << "File path is incorrect"<< std:: endl;
         return 1; 
     }      
-    std:: cout << "This is incorrect inpute " << std:: endl;
+    std:: cout << "This is incorrect input" << std:: endl;
     return false;    
 }
 std::string  Client :: expandTilde(const std::string& path) {
@@ -188,7 +194,7 @@ void Client::send_message(const std::string& message) {
                         buffer.resize(message.size() + inputfile.gcount());
                     }
                     buffer.push_back('\t');
-                    boost::asio::write(_client_socket, boost::asio::buffer(buffer.data(), buffer.size()));
+                    boost::asio::write(*_client_socket, boost::asio::buffer(buffer.data(), buffer.size()));
                 } 
                 std::cout << "Your file has been transferred successfully" << std::endl;
                 return;
@@ -196,7 +202,7 @@ void Client::send_message(const std::string& message) {
         }
         std::string message_to_send = "_MESG" + time_only + " " + user_name + '>' + message + '\t';
         boost::system::error_code err;
-        write(_client_socket, boost::asio::buffer(message_to_send), err);
+        write(*_client_socket, boost::asio::buffer(message_to_send), err);
         if(err) {
             std::cout << "Error: " << err.message() << std::endl;
             return;
@@ -207,13 +213,13 @@ void Client::send_message(const std::string& message) {
 
 void Client::connect_to_server() {
     boost::system::error_code err;
-    _server_socket.connect(server_endpoint, err);
+    _server_socket->connect(server_endpoint, err);
     if(err) {
         std::cout << "Error: " << err.message() << std::endl;
         return;
     }
     std::string message = "PASWD" + encrypted_server_passwd + '\n';
-    write(_server_socket, boost::asio::buffer(message), err);
+    write(*_server_socket, boost::asio::buffer(message), err);
     if(err) {
         std::cout << "Error: " << err.message() << std::endl;
     }
@@ -224,12 +230,12 @@ void  Client::connect_to_another_client_request(Client& another_client, boost::a
     std::string user_ip = users_list[user_name];
     boost::system::error_code err;
     boost::asio::ip::tcp::endpoint tcp_endpoint(boost::asio::ip::address::from_string(user_ip), 5002);
-    _client_socket.connect(tcp_endpoint, err);
+    _client_socket->connect(tcp_endpoint, err);
     if(err) {
         std::cout << "Error: " << err.message() << std::endl;
     }
     std::string message = "CNNCT" + this->user_name + '>' + another_client.get_user_name() + '\t';
-    write(_client_socket, boost::asio::buffer(message), err);
+    write(*_client_socket, boost::asio::buffer(message), err);
     if(err) {
         std::cout << "Error: " << err.message() << std::endl;
     }
@@ -237,63 +243,61 @@ void  Client::connect_to_another_client_request(Client& another_client, boost::a
 	receive_data_from_another_client(buffer_client, another_client, ioContext, tcp_acceptor);
 }
 
-void Client::set_server_endpoint(std::string &server_ip) {
-    server_endpoint = boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(server_ip), 5001);
-}
+void Client::get_another_client_username(boost::asio::io_context &ioContext, Client &another_client, boost::asio::ip::tcp::acceptor &tcp_acceptor, std::string client_to_connect) {
+    try {
+        boost::system::error_code err;
+        while (true) {
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                std::cout << "Please tell me which client you want to join: ";
+                client_to_connect.clear();
+                std::getline(std::cin, client_to_connect);
+            }
+            if (client_to_connect.empty()) {
+                return;
+            }
 
-void Client::get_another_client_username(boost::asio::io_context &ioContext, Client &another_client, boost::asio::ip::tcp::acceptor &tcp_acceptor) {
-    boost::system::error_code err;
-    std::string client_to_connect;
-    std::cout << "Please tell me which client you want to join: ";
-    std::getline(std::cin, client_to_connect);
-    if (std::cin.fail()) {
-        std::cin.clear(); 
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); 
-    }
-    if(client_to_connect.empty()) {
-        return;
-    }
+            if (client_to_connect == "/exit") {
+                std::string request = "EXITT" + user_name + ">\n";
+                write(*_server_socket, boost::asio::buffer(request), err);
+                if (err) {
+                    std::cout << "Error: " << err.message() << std::endl;
+                }
+                return;
+            }
 
-    if (client_to_connect == "/exit") {
-        std::string request = "EXITT" + user_name + ">\n";
-        write(_server_socket, boost::asio::buffer(request), err);
-        if (err) {
-            std::cout << "Error: " << err.message() << std::endl;
+            if (client_to_connect == user_name) {
+                std::cout << "Error: You can't connect to yourself." << std::endl;
+                continue;
+            }
+
+            if (!users_list.count(client_to_connect)) {
+                std::cout << "Error: The user does not exist." << std::endl;
+                continue;
+            }
+
+            if (user_status_list[client_to_connect] == "Busy") {
+                std::cout << "Error: The user is busy." << std::endl;
+                continue;
+            }
+
+            another_client.set_user_name(client_to_connect);
+            connect_to_another_client_request(another_client, ioContext, tcp_acceptor);
+            std::cout << "Please wait while the user responds to your connection request..." << std::endl;
+            return;
         }
-        return;
+    } catch(const std::exception& e) {
+        std::cout << "Exception caught: " << e.what() << std::endl;
     }
-
-    if (client_to_connect == user_name) {
-        std::cout << "Error: You can't connect to yourself." << std::endl;
-        get_another_client_username(ioContext, another_client, tcp_acceptor);
-        return;
-    }
-
-    if (!users_list.count(client_to_connect)) {
-        std::cout << "Error: The user does not exist." << std::endl;
-        get_another_client_username(ioContext, another_client, tcp_acceptor);
-        return;
-    }
-
-    if (user_status_list[client_to_connect] == "Busy") {
-        std::cout << "Error: The user is busy." << std::endl;
-        get_another_client_username(ioContext, another_client, tcp_acceptor);
-        return;
-    }
-
-    another_client.set_user_name(client_to_connect);
-    connect_to_another_client_request(another_client, ioContext, tcp_acceptor);
 }
-
-
 
 void Client::update_user_list(std::string &message) {
     size_t pos = 0;
-    std::string user_data;
-    size_t greater_pos;
-    std::string user_name;
-    std::string user_ip;
-    std::string user_status;
+    std::string user_data = "";
+    size_t greater_pos = 0;
+    std::string user_name = "";
+    std::string user_ip = "";
+    std::string user_status = "";
     users_list.erase(users_list.begin(), users_list.end());
     while(!message.empty()) {
         pos = message.find('|');
@@ -318,33 +322,27 @@ void Client::update_user_list(std::string &message) {
     }
 }
 
-void Client::server_receive_handler(const boost::system::error_code &err, boost:: asio :: streambuf &buf , Client& another_client, boost::asio::io_context &ioContext, boost::asio::ip::tcp::acceptor &tcp_acceptor) { //  ի  
+void Client::server_receive_handler(const boost::system::error_code &err, boost:: asio :: streambuf &buf , Client& another_client, boost::asio::io_context &ioContext, boost::asio::ip::tcp::acceptor &tcp_acceptor) {
     if(!err) {
         std:: istream in(&buf);
-        std:: string message ;
+        std:: string message = "";
         std:: getline(in ,message) ; 
         buf.consume(buf.size());
         std::string resp_code = message.substr(0, 5);
-        std::string request_to_server;
-        std::stringstream input_stream;
-        input_stream.str("hey");
+        std::string request_to_server = "";
         if(resp_code == "PASAC") {
             write_to_file(encrypted_server_passwd);
             std::cout << message.substr(5, message.size()) << std::endl;
-            std::string username;
-            std::string user_ip;
+            std::string username = "";
             getUserName(username);
-            std::cout << "User IP: ";
-            std::getline(std::cin, user_ip);
             set_user_name(username);
-            set_ip_address(user_ip);
             send_data_to_server();
         }
         if(resp_code == "PASDN") {
             std::cout << message.substr(5, message.size()) << std::endl;
-            _server_socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both);
-            _server_socket.close();
-            std::string server_passwd;
+            _server_socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both);
+            _server_socket->close();
+            std::string server_passwd = "";
             std::cout << "Server password: ";
             std::getline(std::cin, server_passwd);
             std::string encrypted_server_password = hmac_md5(server_passwd);
@@ -354,14 +352,14 @@ void Client::server_receive_handler(const boost::system::error_code &err, boost:
         if(resp_code == "UNERR") {
             std::cout << message.substr(5, message.size()) << std::endl;
             std::cout << "User name: ";
-            std::string username;
+            std::string username = "";
             std::getline(std::cin, username);
             set_user_name(username);
             request_to_server = "LOGIN" + this->user_name + ">" + this->ip_address + '\n';
-            boost::asio::write(_server_socket, boost::asio::buffer(request_to_server));
+            boost::asio::write(*_server_socket, boost::asio::buffer(request_to_server));
         }
         if(resp_code == "_UPDT") {
-            system("clear");
+            system("clear -x");
             message.erase(0, 5);
             update_user_list(message);
             for(auto &pair : users_list) {
@@ -372,14 +370,17 @@ void Client::server_receive_handler(const boost::system::error_code &err, boost:
                 if(input_thread.joinable()) {
                     input_thread.join();
                 } 
-                input_thread = std::thread(&Client::get_another_client_username, this, std::ref(ioContext), std::ref(another_client), std::ref(tcp_acceptor));
+                std::string client_to_connect = "";
+                input_thread = std::thread(&Client::get_another_client_username, this, std::ref(ioContext), std::ref(another_client), std::ref(tcp_acceptor), std::ref(client_to_connect));
             } else {
                 std::cout << "No active users for connection.Please wait." << std::endl;
             }
         }
-        async_read_until(_server_socket, buf, '\n', [&buf, &another_client, this, &ioContext, &tcp_acceptor](const boost::system::error_code &err, std::size_t bytes_transferred) {
-            server_receive_handler(err, buf, another_client, ioContext, tcp_acceptor);
-        });
+        if(!is_accepted) {
+            async_read_until(*_server_socket, buf, '\n', [&buf, &another_client, this, &ioContext, &tcp_acceptor](const boost::system::error_code &err, std::size_t bytes_transferred) {
+                server_receive_handler(err, buf, another_client, ioContext, tcp_acceptor);
+            });
+        }
     } else {
         input_thread.join();
         ioContext.stop();
@@ -387,15 +388,15 @@ void Client::server_receive_handler(const boost::system::error_code &err, boost:
  }
 
 void Client::receive_data_from_server(boost:: asio :: streambuf& buf, Client& another_client, boost::asio::io_context &ioContext, boost::asio::ip::tcp::acceptor &tcp_acceptor) {
-    async_read_until(_server_socket, buf, '\n', [&buf, &another_client, this, &ioContext, &tcp_acceptor](const boost::system::error_code &err, std::size_t bytes_transferred) {
+    async_read_until(*_server_socket, buf, '\n', [&buf, &another_client, this, &ioContext, &tcp_acceptor](const boost::system::error_code &err, std::size_t bytes_transferred) {
         server_receive_handler(err, buf, another_client, ioContext, tcp_acceptor);
     });
 };
 
 void Client :: send_data_to_server() { 
     boost::system::error_code err;
-    std::string message = "LOGIN" + this->user_name + ">" + this->ip_address + '\n' ;
-    boost::asio::write(_server_socket , boost :: asio :: buffer(message), err);
+    std::string message = "LOGIN" + this->user_name + '>' + '\n';
+    boost::asio::write(*_server_socket , boost :: asio :: buffer(message), err);
     if(err){    
         std:: cout << "Error during write socket " << err.message() << std:: endl;
         return;
@@ -404,21 +405,22 @@ void Client :: send_data_to_server() {
 
 void Client::get_client_response(Client &another_client, boost::asio::io_context &ioContext, std::shared_ptr<boost::asio::streambuf> buf) {
     boost::system::error_code err;
-    std::string response;
+    std::string response = "";
     std::cout << "Answer: ";
-    std::cin >> response;
+    std::getline(std::cin, response);
     if(response == "y" || response == "yes") {
+        is_accepted = true;
         struct winsize w;
         ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
         terminal_width = w.ws_col;
         std::cout << "Connection accepted" << std::endl;
         response = "_ACPT\t";
-        write(_client_socket, boost::asio::buffer(response), err);
+        write(*_client_socket, boost::asio::buffer(response), err);
         if(err) {
             std::cout << "Error: " << err.message() << std::endl;
         }
         std::cout << user_name << std::endl;
-        system("clear");
+        system("clear -x");
         system("bash -c 'echo -e \"\\033]11;#000000\\007\"'");
         for(int i = 0; i < 38; ++i) {
             std::cout << " ";
@@ -427,16 +429,18 @@ void Client::get_client_response(Client &another_client, boost::asio::io_context
         std::cout << "Chat" << std::endl;
         std::cout << "\033[0m";
         std::cout << "\033[93m";
-        input_thread2 = std::thread(&Client::start_input_thread, this, std::ref(another_client));
-        input_thread2.detach();
+        if(input_thread2.joinable()) {
+            input_thread2.join();
+        }
+        std::string client_message = "";
+        input_thread2 = std::thread(&Client::start_input_thread, this, std::ref(another_client), client_message);
         return;
     }
     else if (response == "n" || response == "no") {
         std::cout << "Connection denied" << std::endl;
-        //input_thread.join();
-        _client_socket.cancel();
-        _client_socket.close();
-        is_accepted = false;
+        std::string message = "_DENY\t";
+        write(*_client_socket, boost::asio::buffer(message));
+        return;
     }
     else {
         std::cout << "Please input y/yes or n/no" << std::endl;
@@ -447,9 +451,9 @@ void Client::get_client_response(Client &another_client, boost::asio::io_context
 void Client::client_receive_handler(const boost::system::error_code &err, std::shared_ptr<boost::asio::streambuf> buf, Client &another_client, boost::asio::io_context &ioContext, boost::asio::ip::tcp::acceptor &tcp_acceptor) {
     if(!err) {
         boost::system::error_code error;
-        std:: istream in(buf.get());
-        std:: string message ;  
-        std:: getline(in , message );
+        std::istream in(buf.get());
+        std::string message = "";  
+        std::getline(in , message );
         if(message.substr(0, 5) == "CNNCT") {
             message.erase(message.find_last_not_of(" \n\r\t") + 1);
             int index_of_symb = message.find('>');
@@ -459,24 +463,20 @@ void Client::client_receive_handler(const boost::system::error_code &err, std::s
             std::cout << "Please press Enter to continue" << std::endl;
             input_thread.join();
             get_client_response(another_client, ioContext, buf);
-            if(!is_accepted) {
-                //_client_socket = boost::asio::ip::tcp::socket(ioContext);
-                accept_client_connections(tcp_acceptor, another_client, ioContext);
-                return;
-            }
         }
         if(message.substr(0, 5) == "_ACPT") {
+            is_accepted = true;
             struct winsize w;
             ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
             terminal_width = w.ws_col;
             std::string request = "_ACPT" + user_name + '>' + another_client.get_user_name() + '\n';
             boost::system::error_code error;
-            write(_server_socket, boost::asio::buffer(request), error);
+            write(*_server_socket, boost::asio::buffer(request), error);
             if(error) {
                 std::cout << "Error: " << error.message() << std::endl;
             }
             std::cout << "Connection accepted" << std::endl;
-            system("clear");
+            system("clear -x");
             system("bash -c 'echo -e \"\\033]11;#000000\\007\"'");
             for(int i = 0; i < 38; ++i) {
                 std::cout << " ";
@@ -485,8 +485,25 @@ void Client::client_receive_handler(const boost::system::error_code &err, std::s
             std::cout << "Chat" << std::endl;
             std::cout << "\033[0m";
             std::cout << "\033[93m";
-            input_thread2 = std::thread(&Client::start_input_thread, this, std::ref(another_client));
-            input_thread2.detach();
+            if(input_thread2.joinable()) {
+                input_thread2.join();
+            }
+            std::string client_message = "";
+            input_thread2 = std::thread(&Client::start_input_thread, this, std::ref(another_client), client_message);
+        }
+        if(message.substr(0, 5) == "_DENY") {
+            std::cout << "Connection denied" << std::endl;
+            input_thread.join();
+            _client_socket->cancel();
+            _client_socket->close();
+            return;
+        }
+        if(message.substr(0, 5) == "DISCN") {
+            std::cout << "Please press enter to disconnect" << std::endl;
+            input_thread2.join();
+            _client_socket->cancel();
+            _client_socket->close();
+            return;
         }
         if(message.substr(0, 5) == "_MESG") {
             message.erase(message.find_last_not_of(" \n\r\t") + 1);
@@ -499,26 +516,6 @@ void Client::client_receive_handler(const boost::system::error_code &err, std::s
             }
             std::cout << message_to_print << std::endl;
         }    
-        /*if(message.substr(0, 5) == "DISCN") {
-            is_open_chat = false;
-            std::cout << "Disconnect request" << std::endl;
-            message.erase(message.find_last_not_of(" \n\r\t") + 1);
-            int index_of_symb = message.find('>');
-            std::string username2 = message.substr(5, index_of_symb - 5);
-            std::string username1 = message.substr(index_of_symb + 1, message.size());
-            //std::cout << username2 << std::endl << username1 << std::endl;
-            _client_socket.close();
-            if(_client_socket.is_open()) {
-                std::cout << "Socket is open" << std::endl;
-            }
-            std::string request = "DISCN" + username1 + '>' + username2 + '\n'; 
-            boost::system::error_code error;
-            write(_server_socket, boost::asio::buffer(request), error);
-            if(error) {
-                std::cout << "Error: " << err.message() << std::endl;
-            }
-            return;
-        }*/
         if( message.substr(0, 5) == "_FILE"){
             int index_of_symb = message.find('>');
             std::cout << "The file has been received; please check the Downloads directory." << std::endl;
@@ -534,25 +531,24 @@ void Client::client_receive_handler(const boost::system::error_code &err, std::s
             input_file.close();
             buf->consume(buf->size());
         }
-        boost:: asio :: async_read_until(_client_socket , *buf , '\t' , [buf, this, &another_client, &ioContext, &tcp_acceptor] (const boost:: system :: error_code &err , size_t bytes_transfered) {
+        boost:: asio :: async_read_until(*_client_socket , *buf , '\t' , [buf, this, &another_client, &ioContext, &tcp_acceptor] (const boost:: system :: error_code &err , size_t bytes_transfered) {
             client_receive_handler(err, buf, another_client, ioContext, tcp_acceptor);
         });
     } else {
-        if(_client_socket.is_open()) {
-            input_thread.join();
-            _client_socket.cancel();
-            _client_socket.close();
-            std::cout << "Connection denied" << std::endl;
+        if(_client_socket->is_open()) {
+            std::cout << "Disconnected" << std::endl;
+            _client_socket->cancel();
+            _client_socket->close();
             std::string request = "_UPDT\n";
-            write(_server_socket, boost::asio::buffer(request));
-            //_client_socket = boost::asio::ip::tcp::socket(ioContext);
+            usleep(1000000);
+            write(*_server_socket, boost::asio::buffer(request));
             accept_client_connections(tcp_acceptor, another_client, ioContext);
         }
     }
 }
 
 void Client :: receive_data_from_another_client(std::shared_ptr<boost::asio::streambuf> buf, Client &another_client, boost::asio::io_context &ioContext, boost::asio::ip::tcp::acceptor &tcp_acceptor) {
-    boost:: asio :: async_read_until(_client_socket , *buf , '\t' ,  [buf, this, &another_client, &ioContext, &tcp_acceptor] (const boost:: system :: error_code &err , size_t bytes_transfered){
+    boost:: asio :: async_read_until(*_client_socket , *buf , '\t' ,  [buf, this, &another_client, &ioContext, &tcp_acceptor] (const boost:: system :: error_code &err , size_t bytes_transfered){
         client_receive_handler(err, buf, another_client, ioContext, tcp_acceptor);
     });
 }
@@ -567,7 +563,9 @@ void Client :: accept_handler(const boost::system::error_code &err, Client &anot
 }
 
 void Client :: accept_client_connections(boost::asio::ip::tcp::acceptor &tcp_acceptor, Client &another_client, boost::asio::io_context &ioContext) {
-    tcp_acceptor.async_accept(_client_socket, [this, &another_client, &ioContext, &tcp_acceptor](const boost::system::error_code &err) {
-        accept_handler(err, another_client, ioContext, tcp_acceptor);
-    });
+    if(!_client_socket->is_open()) {
+        tcp_acceptor.async_accept(*_client_socket, [this, &another_client, &ioContext, &tcp_acceptor](const boost::system::error_code &err) {
+            accept_handler(err, another_client, ioContext, tcp_acceptor);
+        });
+    }
 }
