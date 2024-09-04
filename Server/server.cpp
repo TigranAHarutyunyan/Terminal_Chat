@@ -27,6 +27,16 @@ void read_from_file(std::string &server_passwd) {
 }
 
 int main (int argc, char* argv[]) {
+    if(argc == 2) {
+        if(strcmp(argv[1],"--help") == 0){
+            std:: cout << "Usage: "<< std:: endl;
+            std:: cout << "\tIf you are running the program for the first time, please use sudo" << std:: endl;
+            std:: cout << '\t' << "./server [options]"<< std:: endl;
+            std:: cout << "Options:" << std:: endl;
+            std:: cout << '\t' << "--passwd [password]\tto set the server password  " << std:: endl;
+            return 0;
+        } 
+    }
     std::string server_passwd;
     std::string file_path = "/etc/server_passwd.conf";
     if(Server::check_file(file_path)) {
