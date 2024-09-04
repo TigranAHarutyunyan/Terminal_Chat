@@ -334,8 +334,12 @@ void Client::server_receive_handler(const boost::system::error_code &err, boost:
             write_to_file(encrypted_server_passwd);
             std::cout << message.substr(5, message.size()) << std::endl;
             std::string username = "";
+            std::string user_ip = "";
             getUserName(username);
+            std::cout << "User IP: ";
+            std::getline(std::cin, user_ip);
             set_user_name(username);
+            set_ip_address(user_ip);
             send_data_to_server();
         }
         if(resp_code == "PASDN") {
@@ -359,7 +363,7 @@ void Client::server_receive_handler(const boost::system::error_code &err, boost:
             boost::asio::write(*_server_socket, boost::asio::buffer(request_to_server));
         }
         if(resp_code == "_UPDT") {
-            system("clear -x");
+            system("clear");
             message.erase(0, 5);
             update_user_list(message);
             for(auto &pair : users_list) {
@@ -395,7 +399,7 @@ void Client::receive_data_from_server(boost:: asio :: streambuf& buf, Client& an
 
 void Client :: send_data_to_server() { 
     boost::system::error_code err;
-    std::string message = "LOGIN" + this->user_name + '>' + '\n';
+    std::string message = "LOGIN" + this->user_name + ">" + this->ip_address + '\n' ;
     boost::asio::write(*_server_socket , boost :: asio :: buffer(message), err);
     if(err){    
         std:: cout << "Error during write socket " << err.message() << std:: endl;
@@ -420,7 +424,7 @@ void Client::get_client_response(Client &another_client, boost::asio::io_context
             std::cout << "Error: " << err.message() << std::endl;
         }
         std::cout << user_name << std::endl;
-        system("clear -x");
+        system("clear");
         system("bash -c 'echo -e \"\\033]11;#000000\\007\"'");
         for(int i = 0; i < 38; ++i) {
             std::cout << " ";
@@ -476,7 +480,7 @@ void Client::client_receive_handler(const boost::system::error_code &err, std::s
                 std::cout << "Error: " << error.message() << std::endl;
             }
             std::cout << "Connection accepted" << std::endl;
-            system("clear -x");
+            system("clear");
             system("bash -c 'echo -e \"\\033]11;#000000\\007\"'");
             for(int i = 0; i < 38; ++i) {
                 std::cout << " ";

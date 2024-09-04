@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(my_program)
+project(client)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,10 +12,10 @@ set(SOURCES
     crypt.cpp 
   	  
 )
-add_executable(my_program ${SOURCES})
+add_executable(client ${SOURCES})
 
-target_include_directories(my_program PRIVATE ${OPENSSL_INCLUDE_DIR})
-target_include_directories(my_program PRIVATE ${BOOST_INCLUDE_DIR})
+target_include_directories(client PRIVATE ${OPENSSL_INCLUDE_DIR})
+target_include_directories(client PRIVATE ${BOOST_INCLUDE_DIR})
 
-target_link_libraries(my_program PRIVATE ${OPENSSL_LIBRARIES})
-target_link_libraries(my_program PRIVATE ${BOOST_LIBRARIES})
+target_link_libraries(client PRIVATE ${OPENSSL_LIBRARIES})
+target_link_libraries(client PRIVATE ${BOOST_LIBRARIES})
