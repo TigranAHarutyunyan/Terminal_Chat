@@ -113,7 +113,7 @@ void Server::read_handler(const boost::system::error_code &err, std::shared_ptr<
             send_updates(data.substr(0, 5));
         }
         if(data.substr(0, 5) == "PASWD") {
-            std::string password = data.substr(5, password.size());
+            std::string password = data.substr(5, data.size());
             if(password == passwd) {
                 std::cout << "Connection accepted" << std::endl;
                 std::string message = "PASACPassword is correct.Connection accepted\n";

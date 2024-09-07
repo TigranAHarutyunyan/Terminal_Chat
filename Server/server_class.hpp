@@ -2,7 +2,7 @@
 #include <iostream>
 #include <memory>
 #include <boost/asio.hpp>
-#include <map>
+
 class Server {
     public:
         Server(std::shared_ptr<boost::asio::ip::tcp::socket> socket, boost::asio::ip::tcp::acceptor &acceptor, boost::asio::io_context &ioContext, std::string &passwd);

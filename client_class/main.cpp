@@ -51,9 +51,9 @@ int main (int argc, char* argv[]) {
 				return 1;
 			} else {
 				if (std::strcmp(argv[1], "--config") == 0) {
-					server_ip = std::string(argv[2]);
+					server_ip = argv[2];
 					std::cout << server_ip << std::endl;
-					std::string server_passwd1 = std::string(argv[3]);
+					std::string server_passwd1 = argv[3];
 					if(!Client::is_valid_ip(server_ip)) {
 						Client::get_server_ip(server_ip);
 					} else {
@@ -68,16 +68,12 @@ int main (int argc, char* argv[]) {
 			}
 		}
 		std::string username = "username";
-		std::string user_ip = "user_ip";
 		std::cout << "\033[93m";
 		boost::asio::io_context ioContext;
-		std::string ip = "";
-		std::cout << "IP address: ";
-		std::getline(std::cin, ip);	
-		Client client1(ioContext, username, user_ip, server_ip, server_passwd);
-		Client client2(ioContext, username, user_ip, server_ip, server_passwd);
+		Client client1(ioContext, username, server_ip, server_passwd);
+		Client client2(ioContext, username, server_ip, server_passwd);
 		client1.connect_to_server();
-		boost::asio::ip::tcp::acceptor tcp_acceptor(ioContext, boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(ip), 5002));
+		boost::asio::ip::tcp::acceptor tcp_acceptor(ioContext, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 5002));
 		client1.accept_client_connections(tcp_acceptor, client2, ioContext);  
 		boost::asio:: streambuf buffer_server;
 		client1.receive_data_from_server(buffer_server, client2, ioContext, tcp_acceptor);

@@ -11,7 +11,6 @@ set(SOURCES
 )
 include_directories(${Boost_INCLUDE_DIRS})
 include_directories(${OPENSSL_INCLUDE_DIR})
-include_directories(crypt.hpp)
 add_executable(server ${SOURCES})
 target_include_directories(server  PRIVATE ${BOOST_INCLUDE_DIR})
 target_link_libraries(server PRIVATE ${BOOST_LIBRARIES})
