@@ -122,12 +122,8 @@ void Client::start_input_thread(Client &another_client, std::string client_messa
                 if (error) {
                     std::cout << "Error: " << error.message() << std::endl;
                 }
-                client_message = "DISCN" + user_name + '>' + another_client.get_user_name() + '\n';
-                write(*_server_socket, boost::asio::buffer(client_message), error);
-                if(error) {
-                    std::cout << "Error: " << error.message() << std::endl;
-                }
                 static boost::asio::streambuf buffer;
+                is_accepted = false;
                 receive_data_from_server(buffer, another_client, ioContext, tcp_acceptor);
                 break; 
             }
@@ -508,6 +504,8 @@ void Client::client_receive_handler(const boost::system::error_code &err, std::s
             _client_socket->close();
             static boost::asio::streambuf buffer;
             receive_data_from_server(buffer, another_client, ioContext, tcp_acceptor);
+            std::string request = "DISCN" + user_name + '>' + another_client.get_user_name() + '\n';
+            write(*_server_socket, boost::asio::buffer(request), error);
             return;
         }
         if(message.substr(0, 5) == "_MESG") {
