@@ -25,11 +25,18 @@ void read_from_file(std::string &server_ip, std::string &server_passwd) {
 	}
 }
 
+void return_original_home_var() {
+	const char* sudo_user = getenv("SUDO_USER");
+	std::string original_home = "/home/";
+	original_home = original_home + sudo_user + '/';
+	setenv("HOME", original_home.c_str(), 1);
+}
+
 int main (int argc, char* argv[]) {
 	if(argc == 2) {
         if(strcmp(argv[1],"--help") == 0){
             std:: cout << "Usage: "<< std:: endl;
-            std:: cout << "\tIf you are running the program for the first time, please use sudo -E " << std:: endl;
+            std:: cout << "\tIf you are running the program for the first time, please use sudo" << std:: endl;
             std:: cout << '\t' << "./client [options]"<< std:: endl;
             std:: cout << "Options:" << std:: endl;
             std:: cout << '\t' << "--config [server IP ] [server password]\tto set the server IP and password " << std:: endl;
@@ -39,11 +46,11 @@ int main (int argc, char* argv[]) {
 	try {
 		std::string server_ip = "";
 		std::string server_passwd = "";
-		if (check_file()) {
+		if(check_file()) {
 			read_from_file(server_ip, server_passwd);
 		} else {
 			if(getuid() != 0) {
-				std::cout << "Permission denied.Please run programm with sudo -E" << std::endl;
+				std::cout << "Permission denied.Please run programm with sudo" << std::endl;
 				return 1;
 			}
 			if (!check_args(argc)) {
@@ -51,6 +58,7 @@ int main (int argc, char* argv[]) {
 				return 1;
 			} else {
 				if (std::strcmp(argv[1], "--config") == 0) {
+					return_original_home_var();
 					server_ip = argv[2];
 					std::cout << server_ip << std::endl;
 					std::string server_passwd1 = argv[3];

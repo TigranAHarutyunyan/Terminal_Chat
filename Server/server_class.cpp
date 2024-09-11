@@ -49,10 +49,8 @@ void Server::send_updates(const std::string &resp_code) {
 }
 
 void Server::disconnect_from_user(const std::string &current_user, const std::string &user_to_disconnect) {
-    busy_users_list[current_user] = "NotBusy";
-    busy_users_list[user_to_disconnect] = "NotBusy";
-    std::cout << current_user << " " << busy_users_list[current_user] << std::endl;
-    std::cout << user_to_disconnect << " " << busy_users_list[user_to_disconnect] << std::endl;
+    busy_users_list[current_user] = "Not busy";
+    busy_users_list[user_to_disconnect] = "Not busy";
 }
 
 void Server::update_user_list(const std::string &user_name, const std::string &user_ip) {
@@ -81,7 +79,7 @@ void Server::add_user(const std::string &username, const std::string &IP, std::s
             } else {
                 user_list[username] = IP;
                 active_users_list[username] = "Active";
-                busy_users_list[username] = "NotBusy";
+                busy_users_list[username] = "Not busy";
                 user_socket_list[username] = socket;
                 resp_code = "_UPDT";
                 send_updates(resp_code);
@@ -94,7 +92,7 @@ void Server::add_user(const std::string &username, const std::string &IP, std::s
         update_user_list(username, IP);
         user_list[username] = IP;
         active_users_list[username] = "Active";
-        busy_users_list[username] = "NotBusy";
+        busy_users_list[username] = "Not busy";
         user_socket_list[username] = socket;
         resp_code = "_UPDT";
         send_updates(resp_code);
@@ -115,11 +113,10 @@ void Server::read_handler(const boost::system::error_code &err, std::shared_ptr<
         if(data.substr(0, 5) == "PASWD") {
             std::string password = data.substr(5, data.size());
             if(password == passwd) {
-                std::cout << "Connection accepted" << std::endl;
-                std::string message = "PASACPassword is correct.Connection accepted\n";
+                std::string message = "PASACThe password is correct. The connection is accepted.\n";
                 write_to_socket(socket, message);
             } else {
-                std::string message = "PASDNPassword is incorrect.Connection closed\n";
+                std::string message = "PASDNIncorrect password. The connection is rejected.\n";
                 write_to_socket(socket, message);
                 return;
             }
@@ -144,8 +141,9 @@ void Server::read_handler(const boost::system::error_code &err, std::shared_ptr<
             if(error) {
                 std::cout << "Error: " << err.message() << std::endl;
             }
-            socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both);
-            socket->close();
+            if(socket->is_open()) {
+                socket->close();
+            }
             return;
         }
         if(data.substr(0, 5) == "DISCN") {
@@ -158,7 +156,6 @@ void Server::read_handler(const boost::system::error_code &err, std::shared_ptr<
             int index_of_symb = data.find('>');
             std::string current_user = data.substr(5, index_of_symb - 5);
             std::string user_to_connect = data.substr(index_of_symb + 1, data.size());
-            std::cout << user_to_connect << std::endl << current_user << std::endl;
             busy_users_list[current_user] = "Busy";
             busy_users_list[user_to_connect] = "Busy";
             std::string resp_code = "_UPDT";

@@ -3,7 +3,6 @@
 #include <string>
 #include <boost/asio.hpp>
 #include <stdint.h>
-#include <atomic>
 #include <map>
 class Client{
     private:
@@ -14,7 +13,7 @@ class Client{
         std::string user_name;
         std::string encrypted_server_passwd;
         bool is_accepted;
-        bool set_user_name( const std:: string _user_name );
+        bool set_user_name(const std::string _user_name);
         std::string get_user_name();
         void get_another_client_username(boost::asio::io_context &ioContext, Client &another_client, boost::asio::ip::tcp::acceptor &tcp_acceptor);
         void connect_to_another_client_request(Client&  other_client, boost::asio::io_context &ioContext, boost::asio::ip::tcp::acceptor &tcp_acceptor);
@@ -36,7 +35,10 @@ class Client{
         void update_user_list(std::string &message);
         void get_client_response(Client &another_client, boost::asio::io_context &ioContext, std::shared_ptr<boost::asio::streambuf> buf, boost::asio::ip::tcp::acceptor &tcp_acceptor);
         void set_server_passwd(std::string &server_passwd);
+        void send_exit_request();
+        void waitForExitInput(std::string &answer, boost::asio::io_context &ioContext);
     public:
+        std::string ip_address;
         Client(boost::asio::io_context& io_context , const std::string &user_name , const std::string &server_ip, const std::string &server_passwd);
         ~Client();
         void send_data_to_server();
