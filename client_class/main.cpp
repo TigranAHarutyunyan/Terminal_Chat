@@ -35,11 +35,11 @@ void return_original_home_var() {
 int main (int argc, char* argv[]) {
 	if(argc == 2) {
         if(strcmp(argv[1],"--help") == 0){
-            std:: cout << "Usage: "<< std:: endl;
-            std:: cout << "\tIf you are running the program for the first time, please use sudo" << std:: endl;
-            std:: cout << '\t' << "./client [options]"<< std:: endl;
-            std:: cout << "Options:" << std:: endl;
-            std:: cout << '\t' << "--config [server IP ] [server password]\tto set the server IP and password " << std:: endl;
+            std::cout << "Usage: "<< std:: endl;
+            std::cout << "\tIf you are running the program for the first time, please use sudo" << std:: endl;
+            std::cout << '\t' << "./client [options]"<< std:: endl;
+            std::cout << "Options:" << std:: endl;
+            std::cout << '\t' << "--config [server IP ] [server password]\tto set the server IP and password " << std:: endl;
             return 0;
         } 
     }

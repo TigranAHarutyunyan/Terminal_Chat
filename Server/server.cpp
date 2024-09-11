@@ -16,7 +16,6 @@ void write_to_file(std::string &text) {
 	std::ofstream out(FILE_PATH);
 	out << text << std::endl;	
 	out.close();
-	std::cout << "File was created" << std::endl;
 }
 
 void read_from_file(std::string &server_passwd) {
